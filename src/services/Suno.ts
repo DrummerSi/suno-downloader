@@ -1,10 +1,17 @@
+export enum IPlaylistClipStatus {
+    None,
+    Processing,
+    Success,
+    Error
+}
+
 export interface IPlaylist {
     name: string
     image: string
-    clips: IPlaylistClip[] | undefined
+    //clips: IPlaylistClip[] | undefined
 }
 
-interface IPlaylistClip {
+export interface IPlaylistClip {
     id: string
     title: string
     duration: number
@@ -14,11 +21,12 @@ interface IPlaylistClip {
     video_url: string
     image_url: string
     image_large_url: string
+    status: IPlaylistClipStatus
 }
 
 class Suno {
 
-    static async getSongsFromPlayList(url: string): Promise<IPlaylist> {
+    static async getSongsFromPlayList(url: string): Promise<[IPlaylist, IPlaylistClip[]]> {
 
         //TODO: Check we're in format: https://suno.com/playlist/8ebe794f-d640-46b6-bde8-121622e1a4c2 (https://suno.com/playlist/liked not supported)
         //Scrape URL: https://studio-api.prod.suno.com/api/playlist/8ebe794f-d640-46b6-bde8-121622e1a4c2/?page=1
@@ -66,7 +74,8 @@ class Suno {
                         audio_url: clip.audio_url,
                         video_url: clip.video_url,
                         image_url: clip.image_url,
-                        image_large_url: clip.image_large_url
+                        image_large_url: clip.image_large_url,
+                        status: IPlaylistClipStatus.None
                     }
                     clips.push(itemData)
                 })
@@ -74,11 +83,13 @@ class Suno {
             currentPage++
         }
 
-        return {
-            name: playlistName,
-            image: playListImage,
-            clips: clips
-        }
+        return [
+            {
+                name: playlistName,
+                image: playListImage
+            },
+            clips
+        ]
     }
 
 

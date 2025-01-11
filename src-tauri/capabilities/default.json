@@ -7,19 +7,33 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
     "opener:default",
     "dialog:default",
     {
-        "identifier": "http:default",
-        "allow": [{ "url": "https://*.suno.ai" }]
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://*.suno.ai"
+        }
+      ]
     },
     "fs:default",
-   {
-       "identifier": "fs:write-all",
-       "allow": [{ "path": "$DESKTOP" }, { "path": "$DESKTOP/**"}]
-   },
+    {
+      "identifier": "fs:write-all",
+      "allow": [
+        {
+          "path": "$DESKTOP"
+        },
+        {
+          "path": "$DESKTOP/**"
+        }
+      ]
+    },
     "clipboard-manager:default",
     "notification:default",
-    "log:default"
+    "log:default",
+    "process:default"
   ]
 }
