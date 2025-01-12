@@ -2,14 +2,16 @@ import "./App.css";
 
 import * as path from "@tauri-apps/api/path"
 
-import { AppShell, Badge, Box, Button, CloseButton, FileInput, Flex, Group, Image, Paper, Stack, Table, Text, TextInput } from "@mantine/core"
+import { ActionIcon, AppShell, Badge, Box, Button, CloseButton, Divider, FileInput, Flex, Group, Image, NavLink, Paper, Popover, Progress, Stack, Table, Text, TextInput, Title } from "@mantine/core"
 import { BaseDirectory, create } from "@tauri-apps/plugin-fs";
-import { IconFolder, IconFolderFilled, IconLink, IconSolarElectricity, IconVinyl } from "@tabler/icons-react";
+import { IconBrandGithub, IconCoffee, IconFolder, IconFolderFilled, IconHelp, IconHelpCircle, IconHelpCircleFilled, IconHelpSmall, IconLink, IconSolarElectricity, IconVinyl } from "@tabler/icons-react";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
 import { addImageToMp3, deletePath, ensureDir, writeFile } from "./services/RustFunctions";
 import { delay, showError, showSuccess } from "./services/Utils";
 import { useEffect, useRef, useState } from "react";
 
+import Footer from "./components/Footer";
+import SectionHeading from "./components/SectionHeading";
 import StatusIcon from "./components/StatusIcon";
 import { exit } from '@tauri-apps/plugin-process'
 import { fetch } from "@tauri-apps/plugin-http"
@@ -23,15 +25,18 @@ import { sendNotification } from "@tauri-apps/plugin-notification";
 
 function App() {
 
-    const [playlistUrl, setPlaylistUrl] = useState("https://suno.com/playlist/8ebe794f-d640-46b6-bde8-121622e1a4c2")
+    const [playlistUrl, setPlaylistUrl] = useState("")
     const [saveFolder, setSaveFolder] = useState("")
     const [isGettingPlaylist, setIsGettingPLaylist] = useState(false)
     const [isDownloading, setIsDownloading] = useState(false)
+    const [downloadPercentage, setDownloadPercentage] = useState(0)
 
     const songTable = useRef<HTMLTableElement>(null);
 
     const [playlistData, setPlaylistData] = useState<IPlaylist | null>(null)
     const [playlistClips, setPlaylistClips] = useState<IPlaylistClip[]>([])
+
+    const [footerView, setFooterView] = useState<1 | 2>(1)
 
     const getPlaylist = async () => {
         setIsGettingPLaylist(true)
@@ -75,6 +80,7 @@ function App() {
     }
 
     const downloadPlaylist = async () => {
+        setDownloadPercentage(0)
         setIsDownloading(true)
 
         //TODO: Proper error checking
@@ -86,40 +92,48 @@ function App() {
         await ensureDir(outputDir)
         await ensureDir(tmpDir)
 
+        //Reset the status of all clips
+        setPlaylistClips((prevClips) =>
+            prevClips.map((clip) => ({ ...clip, status: IPlaylistClipStatus.None }))
+        )
+
         //Loop over songs and download them
         let songNo = 1
         for (const song of playlistClips) {
             updateClipStatus(song.id, IPlaylistClipStatus.Processing)
             scrollToRow(song.id)
 
-            await delay(1000)
+            //For testing only
+            // await delay(1000)
 
-            // const response = await fetch(song.audio_url)
-            // if (response.status !== 200) {
-            //     console.log("Failed to download song", song.audio_url)
-            //     updateClipStatus(song.id, IPlaylistClipStatus.Error)
-            //     continue
-            // }
+            const response = await fetch(song.audio_url)
+            if (response.status !== 200) {
+                console.log("Failed to download song", song.audio_url)
+                updateClipStatus(song.id, IPlaylistClipStatus.Error)
+                continue
+            }
 
-            // const songBuffer = await response.arrayBuffer()
+            const songBuffer = await response.arrayBuffer()
 
-            // const songFileName = `${outputDir}\\${songNo.toString().padStart(2, "0")} - ${filenamify(song.title)}.mp3`
-            // writeFile(songFileName, songBuffer)
+            const songFileName = `${outputDir}\\${songNo.toString().padStart(2, "0")} - ${filenamify(song.title)}.mp3`
+            writeFile(songFileName, songBuffer)
 
-            // //Try and download and inject the mp3 image
-            // const response2 = await fetch(song.image_url)
-            // if (response2.status === 200) {
-            //     const imageBuffer = await response2.arrayBuffer()
-            //     const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
-            //     writeFile(imageFileName, imageBuffer)
-            //     addImageToMp3(songFileName, imageFileName)
-            // }
+            //Try and download and inject the mp3 image
+            const response2 = await fetch(song.image_url)
+            if (response2.status === 200) {
+                const imageBuffer = await response2.arrayBuffer()
+                const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
+                writeFile(imageFileName, imageBuffer)
+                addImageToMp3(songFileName, imageFileName)
+            }
 
             //Update the playlist data
             updateClipStatus(song.id, IPlaylistClipStatus.Success)
 
-            songNo++
+            console.log(Math.ceil(songNo / playlistClips.length), songNo, playlistClips.length, Math.ceil(songNo / playlistClips.length) * 100)
+            setDownloadPercentage(Math.ceil((songNo / playlistClips.length) * 100))
 
+            songNo++
         }
 
         setIsDownloading(false)
@@ -127,21 +141,6 @@ function App() {
 
         //openCompleteModal()
         showSuccess("Playlist downloaded successfully")
-
-        //Now we're done
-
-
-        // function stringToArrayBuffer(str: string) {
-        //     // Convert the string to a Uint8Array
-        //     const encoder = new TextEncoder();
-        //     const uint8Array = encoder.encode(str);
-
-        //     // Return the underlying ArrayBuffer
-        //     return uint8Array.buffer;
-        // }
-
-        // //Loop over songs and download them
-        // writeFile(`${outputDir}/${playlistData.name}.mp3`, stringToArrayBuffer("lol"))
     }
 
     const formatSecondsToTime = (seconds: number) => {
@@ -158,6 +157,30 @@ function App() {
         }
         initSavePath()
     }, [])
+
+    useEffect(() => {
+        //If we're downloading, show the download progress
+        if (isDownloading) {
+            setFooterView(2)
+        } else {
+            setFooterView(1)
+        }
+    }, [isDownloading])
+
+    // const updatePercentage = () => {
+    //     const totalItems = playlistClips.length
+    //     const completedItems = playlistClips.filter((clip) =>
+    //         clip.status === IPlaylistClipStatus.Success
+    //     ).length
+
+    //     console.log(JSON.stringify(playlistClips.filter((clip) =>
+    //         clip.status === IPlaylistClipStatus.Success
+    //     ), null, 4))
+
+    //     const percentage = Math.ceil((completedItems / totalItems) * 100)
+    //     console.log(playlistClips, totalItems, completedItems, percentage)
+    //     setDownloadPercentage(percentage)
+    // }
 
     const openCompleteModal = () => modals.open({
         title: 'Operation complete',
@@ -208,7 +231,20 @@ function App() {
                 }}
             >
                 {/* Top Section */}
-                <Flex gap="sm" direction="row" pb={10}>
+                <SectionHeading number="1" title="Paste playlist link">
+                    <Popover position="bottom-start" withArrow shadow="lg">
+                        <Popover.Target>
+                            <ActionIcon variant="subtle" size="sm" color="gray"><IconHelpCircle /></ActionIcon>
+                        </Popover.Target>
+                        <Popover.Dropdown>
+                            <Group w={240} gap={4}>
+                                <Image radius="md" src="./assets/copy-playlist.png" />
+                                <Text>Navigate to your Suno playlist, and click the 'Copy playlist' button as shown</Text>
+                            </Group>
+                        </Popover.Dropdown>
+                    </Popover>
+                </SectionHeading>
+                <Flex gap="sm" direction="row" mb={20}>
                     <TextInput
                         flex={1}
                         value={playlistUrl}
@@ -227,8 +263,10 @@ function App() {
                 </Flex>
 
                 {/* Central Section */}
+                <SectionHeading number="2" title="Review songs" />
                 <Flex
                     bg="dark.8"
+                    mb={20}
                     style={{
                         flex: 1, // This grows to occupy remaining space
                         overflowY: "auto", // Scrollable if content exceeds
@@ -287,7 +325,19 @@ function App() {
                 </Flex>
 
                 {/* Bottom Section */}
-                <Flex gap="sm" direction="row" pt={10}>
+                <SectionHeading number="3" title="Select folder and download">
+                    <Popover position="bottom-start" withArrow shadow="lg">
+                        <Popover.Target>
+                            <ActionIcon variant="subtle" size="sm" color="gray"><IconHelpCircle /></ActionIcon>
+                        </Popover.Target>
+                        <Popover.Dropdown w={240}>
+                            <Text>
+                                In the selected directory, a new folder will be created with the playlist name. This folder will contain the downloaded songs.
+                            </Text>
+                        </Popover.Dropdown>
+                    </Popover>
+                </SectionHeading>
+                <Flex gap="sm" direction="row" mb={20}>
 
                     <TextInput
                         flex={1}
@@ -309,8 +359,33 @@ function App() {
                         Download songs
                     </Button>
                 </Flex>
+
+                <Footer
+                    firstComponent={
+                        <Group gap={6}>
+                            <Button leftSection={<IconBrandGithub />} variant="subtle" size="xs" component="a" href="http://www.github.com" target="_blank">Open source</Button>
+                            <Divider orientation="vertical" />
+                            <Button leftSection={<IconCoffee />} variant="subtle" size="xs" component="a" href="https://ko-fi.com/drummer_si" target="_blank">Buy me a coffee</Button>
+                        </Group>
+                    }
+                    secondComponent={
+                        <Stack
+                            w="100%"
+                            h={140}
+                            gap={4}
+                            pb={10}
+                            mt={-5}
+                        >
+                            <Flex>
+                                <Text size="xs">{downloadPercentage}%</Text>
+                            </Flex>
+                            <Progress value={downloadPercentage} animated />
+                        </Stack>
+                    }
+                    currentView={footerView}
+                />
             </AppShell.Main>
-        </AppShell>
+        </AppShell >
     )
 }
 

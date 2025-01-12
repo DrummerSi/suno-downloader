@@ -13,6 +13,7 @@ export interface IPlaylist {
 
 export interface IPlaylistClip {
     id: string
+    no: number
     title: string
     duration: number
     tags: string
@@ -44,6 +45,7 @@ class Suno {
 
         // ─── Fetch Playlist Data ─────────────────────────────────────
         let currentPage = 1
+        let songNo = 1
         let endOfPlaylist = false
 
         let playlistName = ""
@@ -67,6 +69,7 @@ class Suno {
                 data.playlist_clips.forEach(({ clip }: any) => {
                     const itemData: IPlaylistClip = {
                         id: clip.id,
+                        no: songNo,
                         title: clip.title,
                         duration: clip.metadata.duration,
                         tags: clip.metadata.tags,
@@ -78,6 +81,7 @@ class Suno {
                         status: IPlaylistClipStatus.None
                     }
                     clips.push(itemData)
+                    songNo++
                 })
             }
             currentPage++
