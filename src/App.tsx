@@ -7,7 +7,7 @@ import { BaseDirectory, create } from "@tauri-apps/plugin-fs";
 import { IconBrandGithub, IconCoffee, IconFolder, IconFolderFilled, IconHelp, IconHelpCircle, IconHelpCircleFilled, IconHelpSmall, IconLink, IconSolarElectricity, IconVinyl } from "@tabler/icons-react";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
 import { addImageToMp3, deletePath, ensureDir, writeFile } from "./services/RustFunctions";
-import { delay, showError, showSuccess } from "./services/Utils";
+import { delay, getRandomBetween, showError, showSuccess } from "./services/Utils";
 import { useEffect, useRef, useState } from "react";
 
 import Footer from "./components/Footer";
@@ -19,6 +19,7 @@ import filenamify from "filenamify"
 import { invoke } from "@tauri-apps/api/core";
 import { modals } from "@mantine/modals";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import pLimit from "p-limit"
 import reactLogo from "./assets/react.svg";
 import scrollIntoView from "scroll-into-view-if-needed"
 import { sendNotification } from "@tauri-apps/plugin-notification";
@@ -30,6 +31,7 @@ function App() {
     const [isGettingPlaylist, setIsGettingPLaylist] = useState(false)
     const [isDownloading, setIsDownloading] = useState(false)
     const [downloadPercentage, setDownloadPercentage] = useState(0)
+    const [completedItems, setCompletedItems] = useState(0)
 
     const songTable = useRef<HTMLTableElement>(null);
 
@@ -81,6 +83,7 @@ function App() {
 
     const downloadPlaylist = async () => {
         setDownloadPercentage(0)
+        setCompletedItems(0)
         setIsDownloading(true)
 
         //TODO: Proper error checking
@@ -88,7 +91,7 @@ function App() {
 
         //Create the output directory if it doesn't exist
         const outputDir = await path.join(saveFolder, filenamify(playlistData.name))
-        const tmpDir = await path.join(saveFolder, "tmp")
+        const tmpDir = await path.join(outputDir, "tmp")
         await ensureDir(outputDir)
         await ensureDir(tmpDir)
 
@@ -97,44 +100,45 @@ function App() {
             prevClips.map((clip) => ({ ...clip, status: IPlaylistClipStatus.None }))
         )
 
-        //Loop over songs and download them
-        let songNo = 1
-        for (const song of playlistClips) {
-            updateClipStatus(song.id, IPlaylistClipStatus.Processing)
-            scrollToRow(song.id)
+        const limit = pLimit(5)
+        const downloadPromises = playlistClips.map((song) => {
+            return limit(async () => {
+                updateClipStatus(song.id, IPlaylistClipStatus.Processing)
 
-            //For testing only
-            // await delay(1000)
+                scrollToRow(song.id)
 
-            const response = await fetch(song.audio_url)
-            if (response.status !== 200) {
-                console.log("Failed to download song", song.audio_url)
-                updateClipStatus(song.id, IPlaylistClipStatus.Error)
-                continue
-            }
+                // ─── For Testing Only ────────────────────────
+                //await delay(getRandomBetween(800, 2000))
 
-            const songBuffer = await response.arrayBuffer()
+                // ─── Live Downloading ────────────────────────
+                const response = await fetch(song.audio_url)
+                if (response.status !== 200) {
+                    console.log("Failed to download song", song.audio_url)
+                    updateClipStatus(song.id, IPlaylistClipStatus.Error)
+                    return //continue
+                }
 
-            const songFileName = `${outputDir}\\${songNo.toString().padStart(2, "0")} - ${filenamify(song.title)}.mp3`
-            writeFile(songFileName, songBuffer)
+                const songBuffer = await response.arrayBuffer()
+                const songFileName = `${outputDir}\\${song.no.toString().padStart(2, "0")} - ${filenamify(song.title)}.mp3`
+                writeFile(songFileName, songBuffer)
+                //Try and download and inject the mp3 image
+                const response2 = await fetch(song.image_url)
+                if (response2.status === 200) {
+                    const imageBuffer = await response2.arrayBuffer()
+                    const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
+                    writeFile(imageFileName, imageBuffer)
+                    addImageToMp3(songFileName, imageFileName)
+                }
 
-            //Try and download and inject the mp3 image
-            const response2 = await fetch(song.image_url)
-            if (response2.status === 200) {
-                const imageBuffer = await response2.arrayBuffer()
-                const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
-                writeFile(imageFileName, imageBuffer)
-                addImageToMp3(songFileName, imageFileName)
-            }
+                // ─── Update The Playlist Data ────────────────
+                updateClipStatus(song.id, IPlaylistClipStatus.Success)
+                setCompletedItems((completedItems) => completedItems + 1)
+                // const newPercentage = Math.ceil((song.no / playlistClips.length) * 100)
+                // if (newPercentage > downloadPercentage) setDownloadPercentage(newPercentage)
+            })
+        })
 
-            //Update the playlist data
-            updateClipStatus(song.id, IPlaylistClipStatus.Success)
-
-            console.log(Math.ceil(songNo / playlistClips.length), songNo, playlistClips.length, Math.ceil(songNo / playlistClips.length) * 100)
-            setDownloadPercentage(Math.ceil((songNo / playlistClips.length) * 100))
-
-            songNo++
-        }
+        await Promise.all(downloadPromises)
 
         setIsDownloading(false)
         deletePath(tmpDir)
@@ -166,6 +170,14 @@ function App() {
             setFooterView(1)
         }
     }, [isDownloading])
+
+
+    useEffect(() => {
+        const totalItems = playlistClips.length
+        const newPercentage = Math.ceil((completedItems / totalItems) * 100)
+        setDownloadPercentage(newPercentage)
+    }, [completedItems])
+
 
     // const updatePercentage = () => {
     //     const totalItems = playlistClips.length
