@@ -5,6 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Suno Music Downloader</title>
     <link rel="stylesheet" href="./style.css" type="text/css" />
+    <script type="text/javascript">
+        (function (c, l, a, r, i, t, y) {
+            c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments) };
+            t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+            y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+        })(window, document, "clarity", "script", "pt8ptgfe4u");
+    </script>
+    <script>
+        async function getReleaseAssetUrl(repo, tag = 'latest', assetRegex) {
+            const apiUrl = `https://api.github.com/repos/${repo}/releases/${tag}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    headers: {
+                        Accept: 'application/vnd.github.v3+json',
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+                }
+
+                const release = await response.json();
+                const asset = release.assets.find(asset => assetRegex.test(asset.name));
+
+                if (!asset) {
+                    throw new Error(`No asset found matching ${assetRegex}`);
+                }
+
+                return asset.browser_download_url;
+            } catch (error) {
+                console.error('Error fetching release asset URL:', error.message);
+                return null;
+            }
+        }
+
+
+        getReleaseAssetUrl('DrummerSi/suno-downloader', 'latest', /\.msi/)
+            .then(url => {
+                if (url) {
+                    console.log('Download URL:', url);
+                    document.getElementById('download-windows').href = url;
+                } else {
+                    console.log('No matching asset found.');
+                }
+            });
+
+    </script>
 </head>
 
 <body>
@@ -14,7 +62,7 @@
             <h1>Suno Music Downloader</h1>
             <p>Quickly and easily download your Suno music playlists</p>
             <div class="buttons">
-                <a href="https://github.com/DrummerSi/suno-downloader/releases/download/0.8.1/Suno.Music.Downloader_0.8.1_x64_en-US.msi"
+                <a href="https://github.com/DrummerSi/suno-downloader/releases" id="download-windows"
                     class="btn primary">Download for Windows</a>
                 <a href="https://github.com/DrummerSi/suno-downloader/" class="btn secondary">View source</a>
             </div>
