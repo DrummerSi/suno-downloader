@@ -11,6 +11,7 @@ import { delay, getRandomBetween, showError, showSuccess } from "./services/Util
 import { useEffect, useRef, useState } from "react";
 
 import Footer from "./components/Footer";
+import Logger from "./services/Logger";
 import SectionHeading from "./components/SectionHeading";
 import StatusIcon from "./components/StatusIcon";
 import { exit } from '@tauri-apps/plugin-process'
@@ -53,6 +54,12 @@ function App() {
             showError("Failed to fetch playlist data. Make sure you entered a valid link")
         }
         setIsGettingPLaylist(false)
+
+        //Log the details
+        Logger.log({
+            playlistUrl: playlistUrl,
+            noSongs: playlistClips.length
+        })
     }
 
     const selectOutputFolder = async () => {
@@ -372,6 +379,25 @@ function App() {
                     </Button>
                 </Flex>
 
+                <Box mb={20} display="none">
+                    <hr />
+                    <Group>
+                        <h4>Debug commands:</h4>
+                        <Button onClick={async () => {
+                            await Logger.log({
+                                noSongs: 12,
+                                playlistUrl: "http://www.fred.com"
+                            })
+                            alert(await Logger.getUserId())
+                        }}>Send test log</Button>
+                        <Button onClick={async () => {
+                            alert(await Logger.getUserId())
+                        }}>Get user id</Button>
+                    </Group>
+
+                    <hr />
+                </Box>
+
                 <Footer
                     firstComponent={
                         <Group gap={6}>
@@ -400,105 +426,5 @@ function App() {
         </AppShell >
     )
 }
-
-// function App2() {
-//     const [greetMsg, setGreetMsg] = useState("");
-//     const [name, setName] = useState("");
-
-//     async function greet() {
-//         // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-//         setGreetMsg(await invoke("greet", { name }));
-//     }
-
-//     async function download() {
-
-//         const response = await fetch("https://cdn1.suno.ai/2023b630-359f-4d44-9529-60c3b472c79a.mp3", {
-//             method: "GET",
-//         });
-//         if (response.status !== 200) {
-//             throw new Error("Failed to fetch the file.");
-//         }
-
-//         const fileData = new Uint8Array(await response.arrayBuffer())
-//         await writeFile('test.mp3', fileData, { baseDir: BaseDirectory.Desktop })
-
-//         console.log("SAVED")
-
-//         sendNotification({
-//             title: "Song downloaded",
-//             body: "Song downloaded successfully",
-//         })
-
-//         // const file = await create('test.mp3', { baseDir: BaseDirectory.Desktop })
-//         // await file.write(response.arrayBuffer)
-//         // await file.close()
-//         // console.log(response)
-
-
-//         // const response = await fetch("https://cdn1.suno.ai/2023b630-359f-4d44-9529-60c3b472c79a.mp3", {
-//         //     method: "GET",
-//         //     //responseType: "ArrayBuffer", // Use ArrayBuffer for binary files
-//         // });
-
-//         // if (!response.data) {
-//         //     throw new Error("Failed to fetch the file.");
-//         // }
-
-//         // const savePath = await dialog.save({
-//         //     title: "Save File As",
-//         //     defaultPath: "downloaded_file", // Default filename
-//         // });
-
-//         // if (!savePath) {
-//         //     console.log("Save operation cancelled.");
-//         //     return;
-//         // }
-
-//         // Step 3: Write the file to the selected location
-//         // const fileData = new Uint8Array(response.data); // Convert ArrayBuffer to Uint8Array
-//         // await fs.writeBinaryFile(savePath, fileData);
-
-//         //console.log(`File successfully saved to: ${savePath}`);
-
-
-//     }
-
-//     return (
-//         <main className="container">
-//             <h1>Welcome to Tauri + React</h1>
-
-//             <div className="row">
-//                 <a href="https://vitejs.dev" target="_blank">
-//                     <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-//                 </a>
-//                 <a href="https://tauri.app" target="_blank">
-//                     <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-//                 </a>
-//                 <a href="https://reactjs.org" target="_blank">
-//                     <img src={reactLogo} className="logo react" alt="React logo" />
-//                 </a>
-//             </div>
-//             <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-//             <form
-//                 className="row"
-//                 onSubmit={(e) => {
-//                     e.preventDefault();
-//                     greet();
-//                 }}
-//             >
-//                 <input
-//                     id="greet-input"
-//                     onChange={(e) => setName(e.currentTarget.value)}
-//                     placeholder="Enter a name..."
-//                 />
-//                 <button type="submit">Greet</button>
-
-//                 <button onClick={download}>DOWNLOAD</button>
-//             </form>
-//             <p>{greetMsg}</p>
-//         </main>
-//     );
-// }
 
 export default App;

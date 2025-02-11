@@ -34,6 +34,7 @@
     "clipboard-manager:default",
     "notification:default",
     "log:default",
-    "process:default"
+    "process:default",
+    "store:default"
   ]
 }
