@@ -2,18 +2,20 @@ import "./App.css";
 
 import * as path from "@tauri-apps/api/path"
 
-import { ActionIcon, AppShell, Badge, Box, Button, CloseButton, Divider, FileInput, Flex, Group, Image, NavLink, Paper, Popover, Progress, Stack, Table, Text, TextInput, Title } from "@mantine/core"
-import { BaseDirectory, create } from "@tauri-apps/plugin-fs";
-import { IconBrandGithub, IconCoffee, IconFolder, IconFolderFilled, IconHelp, IconHelpCircle, IconHelpCircleFilled, IconHelpSmall, IconLink, IconSolarElectricity, IconVinyl } from "@tabler/icons-react";
+import { ActionIcon, AppShell, Badge, Box, Button, CloseButton, Divider, Flex, Group, Image, NavLink, Paper, Popover, Progress, Stack, Table, Text, TextInput, Title } from "@mantine/core"
+import { IconAdjustments, IconBrandGithub, IconCoffee, IconFolder, IconFolderFilled, IconHelpCircle, IconHelpCircleFilled, IconLink, IconVinyl } from "@tabler/icons-react";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
-import { addImageToMp3, deletePath, ensureDir, writeFile } from "./services/RustFunctions";
-import { delay, getRandomBetween, showError, showSuccess } from "./services/Utils";
+import { addImageToMp3, deletePath, ensureDir, existsFile, writeFile } from "./services/RustFunctions";
+import { showError, showSuccess } from "./services/Utils";
 import { useEffect, useRef, useState } from "react";
 
 import Footer from "./components/Footer";
 import Logger from "./services/Logger";
 import SectionHeading from "./components/SectionHeading";
+import { Settings } from "./services/SettingsManager";
+import SettingsPanel from "./components/OptionsModal";
 import StatusIcon from "./components/StatusIcon";
+import { exists } from "@tauri-apps/plugin-fs"
 import { exit } from '@tauri-apps/plugin-process'
 import { fetch } from "@tauri-apps/plugin-http"
 import filenamify from "filenamify"
@@ -21,7 +23,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { modals } from "@mantine/modals";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import pLimit from "p-limit"
-import reactLogo from "./assets/react.svg";
 import scrollIntoView from "scroll-into-view-if-needed"
 import { sendNotification } from "@tauri-apps/plugin-notification";
 
@@ -88,6 +89,14 @@ function App() {
         })
     }
 
+    const getSongName = (song: IPlaylistClip, template: string, outputDir: string) => {
+        const songNumber = song.no.toString().padStart(2, "0")
+        const songTitle = filenamify(song.title)
+
+        const songName = template.replace("{trackno}", songNumber).replace("{name}", songTitle)
+        return `${outputDir}\\${songName}.mp3`
+    }
+
     const downloadPlaylist = async () => {
         setDownloadPercentage(0)
         setCompletedItems(0)
@@ -107,6 +116,9 @@ function App() {
             prevClips.map((clip) => ({ ...clip, status: IPlaylistClipStatus.None }))
         )
 
+        //Load settings
+        const settings = await Settings.loadAll()
+
         const limit = pLimit(5)
         const downloadPromises = playlistClips.map((song) => {
             return limit(async () => {
@@ -114,34 +126,44 @@ function App() {
 
                 scrollToRow(song.id)
 
-                // ─── For Testing Only ────────────────────────
-                //await delay(getRandomBetween(800, 2000))
+                const songFileName = getSongName(song, settings.name_templates, outputDir)
+                if (settings.overwrite_files === "false" && await existsFile(songFileName)) {
+                    //Skip writing file if it already exists and options tell us to skip
+                    updateClipStatus(song.id, IPlaylistClipStatus.Skipped)
 
-                // ─── Live Downloading ────────────────────────
-                const response = await fetch(song.audio_url)
-                if (response.status !== 200) {
-                    console.log("Failed to download song", song.audio_url)
-                    updateClipStatus(song.id, IPlaylistClipStatus.Error)
-                    return //continue
+                } else {
+
+                    // ─── For Testing Only ────────────────────────
+                    //await delay(getRandomBetween(800, 2000))
+
+                    // ─── Live Downloading ────────────────────────
+                    const response = await fetch(song.audio_url)
+                    if (response.status !== 200) {
+                        console.log("Failed to download song", song.audio_url)
+                        updateClipStatus(song.id, IPlaylistClipStatus.Error)
+                        return //continue
+                    }
+
+                    const songBuffer = await response.arrayBuffer()
+                    writeFile(songFileName, songBuffer)
+
+                    if (settings.embed_images === "true") {
+                        //Try and download and inject the mp3 image
+                        const response2 = await fetch(song.image_url)
+                        if (response2.status === 200) {
+                            const imageBuffer = await response2.arrayBuffer()
+                            const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
+                            writeFile(imageFileName, imageBuffer)
+                            addImageToMp3(songFileName, imageFileName)
+                        }
+                    }
+
+                    updateClipStatus(song.id, IPlaylistClipStatus.Success)
+
                 }
 
-                const songBuffer = await response.arrayBuffer()
-                const songFileName = `${outputDir}\\${song.no.toString().padStart(2, "0")} - ${filenamify(song.title)}.mp3`
-                writeFile(songFileName, songBuffer)
-                //Try and download and inject the mp3 image
-                const response2 = await fetch(song.image_url)
-                if (response2.status === 200) {
-                    const imageBuffer = await response2.arrayBuffer()
-                    const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
-                    writeFile(imageFileName, imageBuffer)
-                    addImageToMp3(songFileName, imageFileName)
-                }
-
-                // ─── Update The Playlist Data ────────────────
-                updateClipStatus(song.id, IPlaylistClipStatus.Success)
                 setCompletedItems((completedItems) => completedItems + 1)
-                // const newPercentage = Math.ceil((song.no / playlistClips.length) * 100)
-                // if (newPercentage > downloadPercentage) setDownloadPercentage(newPercentage)
+
             })
         })
 
@@ -184,22 +206,6 @@ function App() {
         const newPercentage = Math.ceil((completedItems / totalItems) * 100)
         setDownloadPercentage(newPercentage)
     }, [completedItems])
-
-
-    // const updatePercentage = () => {
-    //     const totalItems = playlistClips.length
-    //     const completedItems = playlistClips.filter((clip) =>
-    //         clip.status === IPlaylistClipStatus.Success
-    //     ).length
-
-    //     console.log(JSON.stringify(playlistClips.filter((clip) =>
-    //         clip.status === IPlaylistClipStatus.Success
-    //     ), null, 4))
-
-    //     const percentage = Math.ceil((completedItems / totalItems) * 100)
-    //     console.log(playlistClips, totalItems, completedItems, percentage)
-    //     setDownloadPercentage(percentage)
-    // }
 
     const openCompleteModal = () => modals.open({
         title: 'Operation complete',
@@ -250,19 +256,26 @@ function App() {
                 }}
             >
                 {/* Top Section */}
-                <SectionHeading number="1" title="Paste playlist link">
-                    <Popover position="bottom-start" withArrow shadow="lg">
-                        <Popover.Target>
-                            <ActionIcon variant="subtle" size="sm" color="gray"><IconHelpCircle /></ActionIcon>
-                        </Popover.Target>
-                        <Popover.Dropdown>
-                            <Group w={240} gap={4}>
-                                <Image radius="md" src="./assets/copy-playlist.png" />
-                                <Text>Navigate to your Suno playlist, and click the 'Copy playlist' button as shown</Text>
-                            </Group>
-                        </Popover.Dropdown>
-                    </Popover>
-                </SectionHeading>
+                <Flex justify="space-between">
+                    <SectionHeading number="1" title="Paste playlist link">
+                        <Popover position="bottom-start" withArrow shadow="lg">
+                            <Popover.Target>
+                                <ActionIcon variant="subtle" size="sm" color="gray"><IconHelpCircle /></ActionIcon>
+                            </Popover.Target>
+                            <Popover.Dropdown>
+                                <Group w={240} gap={4}>
+                                    <Image radius="md" src="./assets/copy-playlist.png" />
+                                    <Text>Navigate to your Suno playlist, and click the 'Copy playlist' button as shown</Text>
+                                </Group>
+                            </Popover.Dropdown>
+                        </Popover>
+                    </SectionHeading>
+
+                    <SettingsPanel />
+
+
+                </Flex>
+
                 <Flex gap="sm" direction="row" mb={20}>
                     <TextInput
                         flex={1}
@@ -393,6 +406,10 @@ function App() {
                         <Button onClick={async () => {
                             alert(await Logger.getUserId())
                         }}>Get user id</Button>
+                        <Button onClick={async () => {
+                            const settings = await Settings.loadAll()
+                            console.log(settings)
+                        }}>Settings test</Button>
                     </Group>
 
                     <hr />

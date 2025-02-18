@@ -37,3 +37,13 @@ export async function writeFile(name: string, content: ArrayBuffer) {
         console.error('Error:', error); // On failure, log the error message
     }
 }
+
+export async function existsFile(path: string) {
+    try {
+        const result = await invoke("exists_file", { path });
+        return result
+    } catch (error) {
+        console.error('Error:', error);
+        return false
+    }
+}

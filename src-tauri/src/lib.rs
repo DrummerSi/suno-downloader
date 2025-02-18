@@ -18,6 +18,14 @@ fn write_file(name: String, content: Vec<u8>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn exists_file(path: String) -> Result<bool, String> {
+    match fs::metadata(&path) {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+#[tauri::command]
 fn ensure_directory_exists(dir_path: String) -> Result<String, String> {
     let path = Path::new(&dir_path);
 
@@ -102,6 +110,7 @@ pub fn run() {
             ensure_directory_exists,
             delete_path,
             write_file,
+            exists_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

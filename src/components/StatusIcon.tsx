@@ -22,6 +22,11 @@ const StatusIcon: FC<Props> = (props) => {
                 <IconSquareRoundedCheckFilled />
             </Text>
 
+        case IPlaylistClipStatus.Skipped:
+            return <Text c="orange" mt={6}>
+                <IconSquareRoundedCheckFilled />
+            </Text>
+
         case IPlaylistClipStatus.Error:
             return <Text c="red" mt={6}>
                 <IconSquareRoundedXFilled />

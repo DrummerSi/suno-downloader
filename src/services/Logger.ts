@@ -1,5 +1,4 @@
-import { Store, load } from '@tauri-apps/plugin-store'
-
+import { Settings } from "./SettingsManager"
 import { app } from '@tauri-apps/api'
 
 export interface IData {
@@ -12,17 +11,7 @@ const API_URL = 'https://gaozpdxgljx1zmw413194.cleavr.xyz/log';
 
 class Logger {
 
-    private static store: Store
-
-    private static async init() {
-        if (!this.store) {
-            this.store = await load('store.json', { autoSave: false });
-        }
-    }
-
     static async log(data: IData): Promise<boolean> {
-
-        if (!this.store) await this.init()
 
         const bodyData: { [key: string]: any } = {
             playlistUrl: data.playlistUrl,
@@ -58,18 +47,15 @@ class Logger {
     }
 
     static async getUserId(): Promise<string | null> {
-        if (await this.store.has('userId')) {
-            return await this.store.get('userId')
-        } else {
-            return null
-        }
+        return Settings.getSetting('userId', null)
     }
 
     private static async setUserId(userId: string): Promise<void> {
-        await this.store.set('userId', userId)
+        await Settings.setSetting('userId', userId)
     }
 
 }
+
 
 
 export default Logger

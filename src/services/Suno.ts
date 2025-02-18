@@ -1,6 +1,7 @@
 export enum IPlaylistClipStatus {
     None,
     Processing,
+    Skipped,
     Success,
     Error
 }
