@@ -2,8 +2,8 @@ import "./App.css";
 
 import * as path from "@tauri-apps/api/path"
 
-import { ActionIcon, AppShell, Badge, Box, Button, CloseButton, Divider, Flex, Group, Image, NavLink, Paper, Popover, Progress, Stack, Table, Text, TextInput, Title } from "@mantine/core"
-import { IconAdjustments, IconBrandGithub, IconCoffee, IconFolder, IconFolderFilled, IconHelpCircle, IconHelpCircleFilled, IconLink, IconVinyl } from "@tabler/icons-react";
+import { ActionIcon, AppShell, Badge, Box, Button, Divider, Flex, Group, Image, Popover, Progress, Stack, Table, Text, TextInput } from "@mantine/core"
+import { IconBrandGithub, IconCoffee, IconFolderFilled, IconHelpCircle, IconLink, IconVinyl } from "@tabler/icons-react";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
 import { addImageToMp3, deletePath, ensureDir, existsFile, writeFile } from "./services/RustFunctions";
 import { showError, showSuccess } from "./services/Utils";
@@ -15,16 +15,12 @@ import SectionHeading from "./components/SectionHeading";
 import { Settings } from "./services/SettingsManager";
 import SettingsPanel from "./components/OptionsModal";
 import StatusIcon from "./components/StatusIcon";
-import { exists } from "@tauri-apps/plugin-fs"
-import { exit } from '@tauri-apps/plugin-process'
 import { fetch } from "@tauri-apps/plugin-http"
 import filenamify from "filenamify"
-import { invoke } from "@tauri-apps/api/core";
 import { modals } from "@mantine/modals";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import pLimit from "p-limit"
 import scrollIntoView from "scroll-into-view-if-needed"
-import { sendNotification } from "@tauri-apps/plugin-notification";
 
 function App() {
 

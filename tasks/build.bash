@@ -1,0 +1,1 @@
+export TAURI_SIGNING_PRIVATE_KEY="D:\Documents\MEGA\_Projects\Suno-downloader\keys\app.key"
