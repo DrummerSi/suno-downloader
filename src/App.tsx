@@ -232,7 +232,7 @@ function App() {
                         <Flex
                             h="100%"
                             w="100%"
-                            justify="flex-start"
+                            justify="center"
                             align="center"
                             style={{
                                 userSelect: "none",
@@ -243,7 +243,7 @@ function App() {
                                 <Text>Suno Music Downloader</Text>
                             </Group>
                         </Flex>
-                        <CloseButton onClick={() => exit(1)} />
+                        {/* <CloseButton onClick={() => exit(1)} /> */}
                     </Flex>
                 </Box>
             </AppShell.Header>
