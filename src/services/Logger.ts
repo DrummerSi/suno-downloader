@@ -1,4 +1,4 @@
-import { Settings } from "./SettingsManager"
+import { getSettingsManager } from "../services/SettingsManager"
 import { app } from '@tauri-apps/api'
 
 export interface IData {
@@ -47,11 +47,11 @@ class Logger {
     }
 
     static async getUserId(): Promise<string | null> {
-        return Settings.getSetting('userId', null)
+        return (await getSettingsManager()).getSetting('userId', null)
     }
 
     private static async setUserId(userId: string): Promise<void> {
-        await Settings.setSetting('userId', userId)
+        await (await getSettingsManager()).setSetting('userId', userId)
     }
 
 }

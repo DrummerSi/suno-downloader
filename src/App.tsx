@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import Footer from "./components/Footer";
 import Logger from "./services/Logger";
 import SectionHeading from "./components/SectionHeading";
-import { Settings } from "./services/SettingsManager";
+import { getSettingsManager } from "./services/SettingsManager"
 import SettingsPanel from "./components/OptionsModal";
 import StatusIcon from "./components/StatusIcon";
 import { fetch } from "@tauri-apps/plugin-http"
@@ -113,7 +113,7 @@ function App() {
         )
 
         //Load settings
-        const settings = await Settings.loadAll()
+        const settings = await (await getSettingsManager()).loadAll()
 
         const limit = pLimit(5)
         const downloadPromises = playlistClips.map((song) => {
@@ -403,7 +403,7 @@ function App() {
                             alert(await Logger.getUserId())
                         }}>Get user id</Button>
                         <Button onClick={async () => {
-                            const settings = await Settings.loadAll()
+                            const settings = await (await getSettingsManager()).loadAll()
                             console.log(settings)
                         }}>Settings test</Button>
                     </Group>

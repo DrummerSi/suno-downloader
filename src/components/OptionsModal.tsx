@@ -1,9 +1,12 @@
-import { ActionIcon, Button, ComboboxItem, Divider, Group, Modal, Select, Stack } from "@mantine/core"
+import { ActionIcon, Button, ComboboxItem, Divider, Group, Modal, Select, Stack, Text } from "@mantine/core"
 import { useEffect, useState } from "react"
 
 import { IconAdjustments } from "@tabler/icons-react"
-import { Settings } from "../services/SettingsManager"
+// import { Settings } from "../services/SettingsManager"
+import { getSettingsManager } from "../services/SettingsManager"
 import { useDisclosure } from "@mantine/hooks"
+import { getVersion } from "@tauri-apps/api/app"
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 const SettingsPanel = () => {
 
@@ -13,6 +16,7 @@ const SettingsPanel = () => {
     const [overwriteFiles, setOverwriteFiles] = useState<ComboboxItem | null>(null)     //Do we overwrite existing files
     const [embedImages, setEmbedImages] = useState<ComboboxItem | null>(null)           //Do we embed images in mp3 files
 
+    const [appVersion, setAppVersion] = useState<string | null>(null)
 
     const closeModal = async () => {
 
@@ -22,17 +26,19 @@ const SettingsPanel = () => {
             embed_images: embedImages.value
         }
         console.log(settings)
-        await Settings.saveAll(settings)
+        await (await getSettingsManager()).saveAll(settings)
+        // await Settings.saveAll(settings)
 
         close()
     }
 
     useEffect(() => {
         (async () => {
-            const settings = await Settings.loadAll()
+            const settings = await (await getSettingsManager()).loadAll()
             setNameTemplate({ value: settings.name_templates, label: settings.name_templates })
             setOverwriteFiles({ value: settings.overwrite_files, label: settings.overwrite_files })
             setEmbedImages({ value: settings.embed_images, label: settings.embed_images })
+            setAppVersion(await getVersion())
         })()
     }, [])
 
@@ -84,7 +90,12 @@ const SettingsPanel = () => {
                 </Stack>
 
                 <Divider my="lg" />
-                <Group mt="lg" justify="flex-end">
+                <Group mt="lg" justify="space-between">
+                    <Button
+                        size="xs"
+                        variant="subtle"
+                        onClick={() => openUrl("https://drummersi.github.io/suno-downloader/")}
+                    >Version {appVersion}</Button>
                     <Button onClick={closeModal}>
                         Close
                     </Button>

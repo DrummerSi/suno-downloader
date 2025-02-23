@@ -60,4 +60,21 @@ class SettingsManager {
     }
 }
 
-export const Settings = await SettingsManager.create();
+
+// Initialize settings asynchronously
+let settingsManagerPromise: Promise<SettingsManager>;
+
+export function initializeSettingsManager() {
+    settingsManagerPromise = SettingsManager.create();
+}
+
+// Get the settings manager instance
+export async function getSettingsManager(): Promise<SettingsManager> {
+    if (!settingsManagerPromise) {
+        await initializeSettingsManager()
+    }
+    return await settingsManagerPromise;
+}
+
+
+// export const Settings = await SettingsManager.create();
