@@ -87,12 +87,13 @@ function App() {
         })
     }
 
-    const getSongName = (song: IPlaylistClip, template: string, outputDir: string) => {
+    const getSongName = async(song: IPlaylistClip, template: string, outputDir: string) => {
         const songNumber = song.no.toString().padStart(2, "0")
         const songTitle = filenamify(song.title)
 
         const songName = template.replace("{trackno}", songNumber).replace("{name}", songTitle)
-        return `${outputDir}\\${songName}.mp3`
+        //return `${outputDir}\\${songName}.mp3`
+        return await path.join(outputDir, path.sep(), `${songName}.mp3`) //`${outputDir}\\${songName}.mp3`
     }
 
     const downloadPlaylist = async () => {
@@ -124,7 +125,7 @@ function App() {
 
                 scrollToRow(song.id)
 
-                const songFileName = getSongName(song, settings.name_templates, outputDir)
+                const songFileName = await getSongName(song, settings.name_templates, outputDir)
                 if (settings.overwrite_files === "false" && await existsFile(songFileName)) {
                     //Skip writing file if it already exists and options tell us to skip
                     updateClipStatus(song.id, IPlaylistClipStatus.Skipped)
@@ -143,6 +144,7 @@ function App() {
                     }
 
                     const songBuffer = await response.arrayBuffer()
+                    console.log('writing', songFileName)
                     writeFile(songFileName, songBuffer)
 
                     if (settings.embed_images === "true") {
@@ -150,7 +152,8 @@ function App() {
                         const response2 = await fetch(song.image_url)
                         if (response2.status === 200) {
                             const imageBuffer = await response2.arrayBuffer()
-                            const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
+                            //const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
+                            const imageFileName = await path.join(tmpDir, path.sep(), `${filenamify(song.id)}.jpg`); // `${tmpDir}\\${filenamify(song.id)}.jpg`
                             writeFile(imageFileName, imageBuffer)
                             addImageToMp3(songFileName, imageFileName)
                         }
@@ -192,9 +195,13 @@ function App() {
     useEffect(() => {
         //If we're downloading, show the download progress
         if (isDownloading) {
-            setFooterView(2)
+            setTimeout(()=> {
+                setFooterView(2)
+            }, 0)
         } else {
-            setFooterView(1)
+            setTimeout(()=> {
+                setFooterView(1)
+            }, 500)
         }
     }, [isDownloading])
 
@@ -405,6 +412,9 @@ function App() {
                             const settings = await (await getSettingsManager()).loadAll()
                             console.log(settings)
                         }}>Settings test</Button>
+                         <Button onClick={async () => {
+                            setFooterView(footerView == 1 ? 2 : 1)
+                        }}>Toggle bar</Button>
                     </Group>
 
                     <hr />

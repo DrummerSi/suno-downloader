@@ -41,12 +41,26 @@ const Footer: FC<Props> = (props) => {
         const container = containerRef.current
         if (!container) return
 
-        const targetScrollTop = currentView === 1 ? 0 : container.offsetHeight
+        //console.log(currentView)
+
+        const targetScrollTop = (currentView === 1)
+            ? 0
+            : container.offsetHeight
         //console.log("SCROLL TO", targetScrollTop)
-        container.scrollTo({
-            top: targetScrollTop,
-            behavior: "smooth"
-        })
+
+            container.scrollTo({
+                top: targetScrollTop,
+                behavior: "smooth"
+            })
+
+
+        // const height = container.clientHeight
+        // container.style.height="auto"
+        // setTimeout(() => {
+        //     container.setAttribute("style", "height: " + height + "px")
+        // }, 0)
+
+        console.log(container)
     }, [currentView])
 
 
