@@ -48,17 +48,20 @@ function App() {
             const data = await Suno.getSongsFromPlayList(playlistUrl)
             setPlaylistData(data[0])
             setPlaylistClips(data[1])
+
+            //Log the details
+            Logger.log({
+                playlistUrl: playlistUrl,
+                noSongs: data[1].length // playlistClips.length
+            })
+
+
         } catch (err) {
             console.log(err)
             showError("Failed to fetch playlist data. Make sure you entered a valid link")
         }
         setIsGettingPLaylist(false)
 
-        //Log the details
-        Logger.log({
-            playlistUrl: playlistUrl,
-            noSongs: playlistClips.length
-        })
     }
 
     const selectOutputFolder = async () => {
@@ -87,7 +90,7 @@ function App() {
         })
     }
 
-    const getSongName = async(song: IPlaylistClip, template: string, outputDir: string) => {
+    const getSongName = async (song: IPlaylistClip, template: string, outputDir: string) => {
         const songNumber = song.no.toString().padStart(2, "0")
         const songTitle = filenamify(song.title)
 
@@ -195,11 +198,11 @@ function App() {
     useEffect(() => {
         //If we're downloading, show the download progress
         if (isDownloading) {
-            setTimeout(()=> {
+            setTimeout(() => {
                 setFooterView(2)
             }, 0)
         } else {
-            setTimeout(()=> {
+            setTimeout(() => {
                 setFooterView(1)
             }, 500)
         }
@@ -412,7 +415,7 @@ function App() {
                             const settings = await (await getSettingsManager()).loadAll()
                             console.log(settings)
                         }}>Settings test</Button>
-                         <Button onClick={async () => {
+                        <Button onClick={async () => {
                             setFooterView(footerView == 1 ? 2 : 1)
                         }}>Toggle bar</Button>
                     </Group>

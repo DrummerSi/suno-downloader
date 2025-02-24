@@ -55,6 +55,16 @@
                 }
             });
 
+        getReleaseAssetUrl('DrummerSi/suno-downloader', 'latest', /\.dmg/)
+            .then(url => {
+                if (url) {
+                    console.log('Download URL:', url);
+                    document.getElementById('download-mac').href = url;
+                } else {
+                    console.log('No matching asset found.');
+                }
+            });
+
     </script>
 </head>
 
@@ -65,10 +75,10 @@
             <h1>Suno Music Downloader</h1>
             <p>Quickly and easily download your Suno music playlists</p>
             <div class="buttons">
-                <a href="https://github.com/DrummerSi/suno-downloader/releases" id="download-windows"
-                    class="btn primary"><i class="fa-brands fa-windows"></i> Download for Windows</a>
-                <a href="https://github.com/DrummerSi/suno-downloader/releases" id="download-mac"
-                    class="btn secondary"><i class="fa-brands fa-apple"></i> Download for macOS</a>
+                <a href="#" id="download-windows" class="btn primary"><i class="fa-brands fa-windows"></i> Download for
+                    Windows</a>
+                <a href="#" id="download-mac" class="btn secondary"><i class="fa-brands fa-apple"></i> Download for
+                    macOS</a>
             </div>
 
             <img src="./suno-app.png"
