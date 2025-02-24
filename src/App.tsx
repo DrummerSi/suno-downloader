@@ -2,7 +2,7 @@ import "./App.css";
 
 import * as path from "@tauri-apps/api/path"
 
-import { ActionIcon, AppShell, Badge, Box, Button, Divider, Flex, Group, Image, Popover, Progress, Stack, Table, Text, TextInput } from "@mantine/core"
+import { ActionIcon, AppShell, Badge, Box, Button, CloseButton, Divider, Flex, Group, Image, Popover, Progress, Stack, Table, Text, TextInput } from "@mantine/core"
 import { IconBrandGithub, IconCoffee, IconFolderFilled, IconHelpCircle, IconLink, IconVinyl } from "@tabler/icons-react";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
 import { addImageToMp3, deletePath, ensureDir, existsFile, writeFile } from "./services/RustFunctions";
@@ -20,7 +20,9 @@ import filenamify from "filenamify"
 import { modals } from "@mantine/modals";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import pLimit from "p-limit"
+import { exit } from '@tauri-apps/plugin-process'
 import scrollIntoView from "scroll-into-view-if-needed"
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 function App() {
 
@@ -226,8 +228,7 @@ function App() {
                 <Box h="100%" data-tauri-drag-region>
                     <Flex justify="space-between" h="100%" w="100%" data-tauri-drag-region>
                         <Flex
-                            h="100%"
-                            w="100%"
+                            h="100%" w="100%"
                             justify="center"
                             align="center"
                             style={{
@@ -239,7 +240,7 @@ function App() {
                                 <Text>Suno Music Downloader</Text>
                             </Group>
                         </Flex>
-                        {/* <CloseButton onClick={() => exit(1)} /> */}
+                        <CloseButton onClick={() => exit(1)} mt={6} mr={6} />
                     </Flex>
                 </Box>
             </AppShell.Header>
@@ -268,8 +269,6 @@ function App() {
                     </SectionHeading>
 
                     <SettingsPanel />
-
-
                 </Flex>
 
                 <Flex gap="sm" direction="row" mb={20}>
@@ -414,19 +413,17 @@ function App() {
                 <Footer
                     firstComponent={
                         <Group gap={6}>
-                            <Button leftSection={<IconBrandGithub />} variant="subtle" size="xs" component="a" href="http://www.github.com" target="_blank">Open source</Button>
+                            <Button leftSection={<IconBrandGithub />} variant="subtle" size="xs"
+                                onClick={() => openUrl("https://github.com/DrummerSi/suno-downloader")}
+                            >Open source</Button>
                             <Divider orientation="vertical" />
-                            <Button leftSection={<IconCoffee />} variant="subtle" size="xs" component="a" href="https://ko-fi.com/drummer_si" target="_blank">Buy me a coffee</Button>
+                            <Button leftSection={<IconCoffee />} variant="subtle" size="xs"
+                                onClick={() => openUrl("https://ko-fi.com/drummer_si")}
+                            >Buy me a coffee</Button>
                         </Group>
                     }
                     secondComponent={
-                        <Stack
-                            w="100%"
-                            h={140}
-                            gap={4}
-                            pb={10}
-                            mt={-5}
-                        >
+                        <Stack w="100%" h={140} gap={4} pb={10} mt={-5}>
                             <Flex>
                                 <Text size="xs">{downloadPercentage}%</Text>
                             </Flex>
