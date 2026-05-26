@@ -1,3 +1,5 @@
+import { fetch } from "@tauri-apps/plugin-http"
+
 export enum IPlaylistClipStatus {
     None,
     Processing,
@@ -30,19 +32,10 @@ class Suno {
 
     static async getSongsFromPlayList(url: string): Promise<[IPlaylist, IPlaylistClip[]]> {
 
-        //TODO: Check we're in format: https://suno.com/playlist/8ebe794f-d640-46b6-bde8-121622e1a4c2 (https://suno.com/playlist/liked not supported)
         //Scrape URL: https://studio-api.prod.suno.com/api/playlist/8ebe794f-d640-46b6-bde8-121622e1a4c2/?page=1
 
         // ─── Extract Playlist Id ─────────────────────────────────────
-        const regex = /suno\.com\/playlist\/(.*)/
-        const match = url.match(regex)
-        let playlistId = ""
-
-        if (match && match[1]) {
-            playlistId = match[1]
-        } else {
-            throw new Error("Invalid URL or no playlist ID found")
-        }
+        const playlistId = this.extractPlaylistId(url)
 
         // ─── Fetch Playlist Data ─────────────────────────────────────
         let currentPage = 1
@@ -95,6 +88,30 @@ class Suno {
             },
             clips
         ]
+    }
+
+    private static extractPlaylistId(url: string): string {
+        let parsedUrl: URL
+        try {
+            parsedUrl = new URL(url.trim())
+        } catch {
+            throw new Error("Invalid URL or no playlist ID found")
+        }
+
+        const isSunoPlaylistUrl =
+            (parsedUrl.hostname === "suno.com" || parsedUrl.hostname === "www.suno.com") &&
+            parsedUrl.pathname.startsWith("/playlist/")
+
+        if (!isSunoPlaylistUrl) {
+            throw new Error("Invalid URL or no playlist ID found")
+        }
+
+        const playlistId = parsedUrl.pathname.split("/").filter(Boolean)[1]
+        if (!playlistId || playlistId === "liked") {
+            throw new Error("Invalid URL or no playlist ID found")
+        }
+
+        return playlistId
     }
 
 
