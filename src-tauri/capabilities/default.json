@@ -23,6 +23,9 @@
       "identifier": "http:default",
       "allow": [
         {
+          "url": "https://studio-api.prod.suno.com"
+        },
+        {
           "url": "https://*.suno.ai"
         }
       ]
