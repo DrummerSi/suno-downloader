@@ -982,6 +982,11 @@ lru-cache@^5.1.1:
   dependencies:
     yallist "^3.0.2"
 
+mantine-contextmenu@^9.2.1:
+  version "9.2.1"
+  resolved "https://registry.yarnpkg.com/mantine-contextmenu/-/mantine-contextmenu-9.2.1.tgz#d1d4dab0ca1eeaba7f1bba6cf2cad8cf31636709"
+  integrity sha512-oqFPT9qOQBPgf2eSuiujGQp38QgV0WsIIMxQkPfkjVc8FWAKcnXv7OGxGN1ctRrcMqUbsS34rjI0SvNdmFwG8A==
+
 merge2@^1.3.0:
   version "1.4.1"
   resolved "https://registry.yarnpkg.com/merge2/-/merge2-1.4.1.tgz#4368892f885e907455a6fd7dc55c0c9d404990ae"
