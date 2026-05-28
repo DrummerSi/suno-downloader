@@ -17,48 +17,18 @@ const Footer: FC<Props> = (props) => {
     const { targetRef: containerRef } = useScrollIntoView<HTMLDivElement>();
 
 
-    // Handler to toggle scrolling
-    // const toggleView = () => {
-    //     const container = containerRef.current;
-    //     if (!container) return;
-
-    //     if (isFirstVisible) {
-    //         container.scrollTo({
-    //             top: container.offsetHeight, // Scroll to second div
-    //             behavior: 'smooth',
-    //         });
-    //     } else {
-    //         container.scrollTo({
-    //             top: 0, // Scroll back to first div
-    //             behavior: 'smooth',
-    //         });
-    //     }
-
-    //     setIsFirstVisible((prev) => !prev);
-    // };
-
     useEffect(() => {
         const container = containerRef.current
         if (!container) return
 
-        //console.log(currentView)
-
         const targetScrollTop = (currentView === 1)
             ? 0
             : container.offsetHeight
-        //console.log("SCROLL TO", targetScrollTop)
 
-            container.scrollTo({
-                top: targetScrollTop,
-                behavior: "smooth"
-            })
-
-
-        // const height = container.clientHeight
-        // container.style.height="auto"
-        // setTimeout(() => {
-        //     container.setAttribute("style", "height: " + height + "px")
-        // }, 0)
+        container.scrollTo({
+            top: targetScrollTop,
+            behavior: "smooth"
+        })
 
         console.log(container)
     }, [currentView])

@@ -1,521 +1,280 @@
 import "./App.css";
 
-import * as path from "@tauri-apps/api/path"
+import * as path from "@tauri-apps/api/path";
 
-import { ActionIcon, AppShell, Badge, Box, Button, CloseButton, Divider, Flex, Group, Image, Popover, Progress, Stack, Table, Text, TextInput } from "@mantine/core"
-import { IconBrandGithub, IconCoffee, IconFolderFilled, IconHelpCircle, IconLink, IconVinyl, IconCopy, IconTrash, IconDownload } from "@tabler/icons-react";
+import {
+    AppShell,
+} from "@mantine/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import Logger from "./services/Logger";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
 import { addImageToMp3, deletePath, ensureDir, existsFile, writeFile } from "./services/RustFunctions";
-import { showError, showSuccess } from "./services/Utils";
-import { useEffect, useRef, useState } from "react";
-
-import Footer from "./components/Footer";
-import Logger from "./services/Logger";
-import SectionHeading from "./components/SectionHeading";
-import { getSettingsManager, Settings } from "./services/SettingsManager"
-import SettingsPanel from "./components/OptionsModal";
-import StatusIcon from "./components/StatusIcon";
-import { fetch } from "@tauri-apps/plugin-http"
-import filenamify from "filenamify"
-import { modals } from "@mantine/modals";
+import { fetch } from "@tauri-apps/plugin-http";
+import filenamify from "filenamify";
+import { getSettingsManager, Settings } from "./services/SettingsManager";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import pLimit from "p-limit"
-import { exit } from '@tauri-apps/plugin-process'
-import scrollIntoView from "scroll-into-view-if-needed"
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { useContextMenu } from 'mantine-contextmenu'
 
-type DownloadContext = {
-    settings: Awaited<Settings>
-    outputDir: string
-    tmpDir: string
-}
+import pLimit from "p-limit";
+import scrollIntoView from "scroll-into-view-if-needed";
+import { showError, showSuccess } from "./services/Utils";
+
+import DebugPanel from "./components/DebugPanel";
+import AppHeader from "./components/AppHeader";
+import DownloadControls from "./components/DownloadControls";
+import SongTableSection from "./components/SongTableSection";
+import PlaylistUrlSection from "./components/PlaylistUrlSection";
+import { MAX_PARALLEL_DOWNLOADS } from "./consts";
+import AppFooter from "./components/AppFooter";
+import { downloadClip, DownloadContext, DownloadProgress } from "./services/downloads";
+
+
+
 
 function App() {
-
-    const { showContextMenu } = useContextMenu()
-
-    const [playlistUrl, setPlaylistUrl] = useState("")
-    const [saveFolder, setSaveFolder] = useState("")
-    const [isGettingPlaylist, setIsGettingPLaylist] = useState(false)
-    const [isDownloading, setIsDownloading] = useState(false)
-    const [downloadPercentage, setDownloadPercentage] = useState(0)
-    const [completedItems, setCompletedItems] = useState(0)
+    const [playlistUrl, setPlaylistUrl] = useState("");
+    const [saveFolder, setSaveFolder] = useState("");
+    const [isGettingPlaylist, setIsGettingPlaylist] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>({ completed: 0, total: 0 });
+    const [playlistData, setPlaylistData] = useState<IPlaylist | null>(null);
+    const [playlistClips, setPlaylistClips] = useState<IPlaylistClip[]>([]);
+    const [footerView, setFooterView] = useState<1 | 2>(1);
 
     const songTable = useRef<HTMLTableElement>(null);
 
-    const [playlistData, setPlaylistData] = useState<IPlaylist | null>(null)
-    const [playlistClips, setPlaylistClips] = useState<IPlaylistClip[]>([])
+    const downloadPercentage = useMemo(() => {
+        if (downloadProgress.total === 0) return 0;
 
-    const [footerView, setFooterView] = useState<1 | 2>(1)
+        return Math.min(100, Math.ceil((downloadProgress.completed / downloadProgress.total) * 100));
+    }, [downloadProgress]);
 
+    const resetDownloadProgress = useCallback((total: number) => {
+        setDownloadProgress({ completed: 0, total });
+    }, []);
 
-    const prepareDownloadContext = async (playlistName: string) => {
-        const settings = await (await getSettingsManager()).loadAll()
+    const markDownloadComplete = useCallback(() => {
+        setDownloadProgress((progress) => ({
+            ...progress,
+            completed: Math.min(progress.completed + 1, progress.total),
+        }));
+    }, []);
 
-        const outputDir = await path.join(saveFolder, filenamify(playlistName))
-        const tmpDir = await path.join(outputDir, 'tmp')
+    const prepareDownloadContext = useCallback(
+        async (playlistName: string): Promise<DownloadContext> => {
+            const settings = await (await getSettingsManager()).loadAll();
+            const outputDir = await path.join(saveFolder, filenamify(playlistName));
+            const tmpDir = await path.join(outputDir, "tmp");
 
-        await ensureDir(outputDir)
-        await ensureDir(tmpDir)
+            await ensureDir(outputDir);
+            await ensureDir(tmpDir);
 
-        return { settings, outputDir, tmpDir }
-    }
+            return { settings, outputDir, tmpDir };
+        },
+        [saveFolder]
+    );
 
-    const downloadClip = async (song: IPlaylistClip, context: DownloadContext, forceOverwrite = false) => {
-        const { settings, outputDir, tmpDir } = context
+    const updateClipStatus = useCallback((id: string, status: IPlaylistClipStatus) => {
+        setPlaylistClips((prevClips) =>
+            prevClips.map((clip) => (clip.id === id ? { ...clip, status } : clip))
+        );
+    }, []);
 
-        updateClipStatus(song.id, IPlaylistClipStatus.Processing)
-        scrollToRow(song.id)
+    const scrollToRow = useCallback((row: string) => {
+        const node = songTable.current?.querySelector(`tr[data-id="row-${row}"]`);
+        if (!node) return;
 
-        const songFileName = await getSongName(song, settings.name_templates, outputDir)
-
-        if ((settings.overwrite_files === "false" && await existsFile(songFileName)) || !forceOverwrite) {
-            //Skip writing file if it already exists and options tell us to skip
-            updateClipStatus(song.id, IPlaylistClipStatus.Skipped)
-            return
-        }
-
-        const response = await fetch(song.audio_url)
-
-        if (response.status !== 200) {
-            updateClipStatus(song.id, IPlaylistClipStatus.Error)
-            return
-        }
-
-        const songBuffer = await response.arrayBuffer()
-        await writeFile(songFileName, songBuffer)
-
-        if (settings.embed_images === "true") {
-            await embedClipImage(song, songFileName, tmpDir)
-        }
-
-        updateClipStatus(song.id, IPlaylistClipStatus.Success)
-    }
-
-    const embedClipImage = async (
-        song: IPlaylistClip,
-        songFileName: string,
-        tmpDir: string
-    ) => {
-        const response = await fetch(song.image_url)
-        if (response.status !== 200) return false
-
-        const imageBuffer = await response.arrayBuffer()
-        const imageFileName = await path.join(tmpDir, path.sep(), `${filenamify(song.id)}.jpg`);
-
-        writeFile(imageFileName, imageBuffer)
-        addImageToMp3(songFileName, imageFileName)
-    }
-
-
-
+        scrollIntoView(node, {
+            scrollMode: "if-needed",
+            behavior: "smooth",
+            block: "end",
+        });
+    }, []);
 
     const getPlaylist = async () => {
-        setIsGettingPLaylist(true)
-        setPlaylistData(null)
-        setPlaylistClips([])
+        setIsGettingPlaylist(true);
+        setPlaylistData(null);
+        setPlaylistClips([]);
+        resetDownloadProgress(0);
+
         try {
-            const data = await Suno.getSongsFromPlayList(playlistUrl)
-            setPlaylistData(data[0])
-            setPlaylistClips(data[1])
+            const data = await Suno.getSongsFromPlayList(playlistUrl);
 
-            //Log the details
-            Logger.log({
-                playlistUrl: playlistUrl,
-                noSongs: data[1].length // playlistClips.length
-            })
+            setPlaylistData(data[0]);
+            setPlaylistClips(data[1]);
 
-
+            await Logger.log({
+                playlistUrl,
+                noSongs: data[1].length,
+            });
         } catch (err) {
-            console.log(err)
-            showError("Failed to fetch playlist data. Make sure you entered a valid link")
+            console.log(err);
+            showError("Failed to fetch playlist data. Make sure you entered a valid link");
+        } finally {
+            setIsGettingPlaylist(false);
         }
-        setIsGettingPLaylist(false)
-
-    }
+    };
 
     const selectOutputFolder = async () => {
         const dir = await openDialog({
             title: "Select Output Folder",
             directory: true,
-            canCreateDirectories: true
-        })
-        if (dir) setSaveFolder(dir)
-    }
+            canCreateDirectories: true,
+        });
 
-    const updateClipStatus = (id: string, status: IPlaylistClipStatus) => {
-        setPlaylistClips((prevClips) =>
-            prevClips.map((clip) =>
-                clip.id === id ? { ...clip, status: status } : clip
-            )
-        )
-    }
-
-    const scrollToRow = (row: string) => {
-        const node = songTable.current?.querySelector(`tr[data-id="row-${row}"]`)
-        if (node) scrollIntoView(node, {
-            scrollMode: "if-needed",
-            behavior: "smooth",
-            block: "end"
-        })
-    }
-
-    const getSongName = async (song: IPlaylistClip, template: string, outputDir: string) => {
-        const songNumber = song.no.toString().padStart(2, "0")
-        const songTitle = filenamify(song.title)
-
-        const songName = template.replace("{trackno}", songNumber).replace("{name}", songTitle)
-        //return `${outputDir}\\${songName}.mp3`
-        return await path.join(outputDir, path.sep(), `${songName}.mp3`) //`${outputDir}\\${songName}.mp3`
-    }
+        if (dir) setSaveFolder(dir);
+    };
 
     const downloadPlaylist = async () => {
-        if (!playlistData) return
+        if (!playlistData || playlistClips.length === 0) return;
 
-        setDownloadPercentage(0)
-        setCompletedItems(0)
-        setIsDownloading(true)
+        let context: DownloadContext | null = null;
 
-        const context = await prepareDownloadContext(playlistData.name)
-        const limit = pLimit(5)
+        resetDownloadProgress(playlistClips.length);
+        setIsDownloading(true);
 
-        //Reset the status of all clips
-        setPlaylistClips((prevClips) =>
-            prevClips.map((clip) => ({ ...clip, status: IPlaylistClipStatus.None }))
-        )
+        try {
+            context = await prepareDownloadContext(playlistData.name);
+            const downloadContext = context;
+            const limit = pLimit(MAX_PARALLEL_DOWNLOADS);
 
-        await Promise.all(
-            playlistClips.map((song) =>
-                limit(async () => {
-                    await downloadClip(song, context)
-                    setCompletedItems((value) => value + 1)
-                })
-            )
-        )
+            setPlaylistClips((prevClips) =>
+                prevClips.map((clip) => ({ ...clip, status: IPlaylistClipStatus.None }))
+            );
 
-        setIsDownloading(false)
-        await deletePath(context.tmpDir)
+            await Promise.all(
+                playlistClips.map((song) =>
+                    limit(async () => {
+                        await downloadClip(song, {
+                            context: downloadContext,
+                            scrollToRow,
+                            updateClipStatus,
+                        });
+                        markDownloadComplete();
+                    })
+                )
+            );
 
-        showSuccess("Playlist downloaded successfully")
-    }
+            showSuccess("Playlist downloaded successfully");
+        } catch (err) {
+            console.log(err);
+            showError("Failed to download playlist");
+        } finally {
+            setIsDownloading(false);
+            if (context) await deletePath(context.tmpDir);
+        }
+    };
 
     const downloadSingleSong = async (song: IPlaylistClip) => {
-        if (!playlistData) return
+        if (!playlistData) return;
 
-        setIsDownloading(true)
+        let context: DownloadContext | null = null;
 
-        const context = await prepareDownloadContext(playlistData.name)
+        resetDownloadProgress(1);
+        setIsDownloading(true);
 
-        await downloadClip(song, context, true)
+        try {
+            context = await prepareDownloadContext(playlistData.name);
+            const result = await downloadClip(song, {
+                context,
+                forceOverwrite: true,
+                scrollToRow,
+                updateClipStatus,
+            });
 
-        setIsDownloading(false)
-        await deletePath(context.tmpDir)
+            markDownloadComplete();
 
-        showSuccess("Song downloaded successfully")
-    }
+            if (result === "error") {
+                showError("Failed to download song");
+                return;
+            }
+
+            showSuccess(result === "skipped" ? "Song already exists" : "Song downloaded successfully");
+        } catch (err) {
+            console.log(err);
+            showError("Failed to download song");
+        } finally {
+            setIsDownloading(false);
+            if (context) await deletePath(context.tmpDir);
+        }
+    };
 
     const deleteClip = (clipToRemove: IPlaylistClip) => {
-        setPlaylistClips((prev) =>
-            prev.filter((clip) => clip.id !== clipToRemove.id)
-        )
-    }
-
-    const formatSecondsToTime = (seconds: number) => {
-        const roundedSeconds = Math.round(seconds)
-        const mins = Math.floor(roundedSeconds / 60)
-        const secs = roundedSeconds % 60
-        return `${mins}:${secs.toString().padStart(2, "0")}`
-    }
+        setPlaylistClips((prev) => prev.filter((clip) => clip.id !== clipToRemove.id));
+    };
 
     useEffect(() => {
         const initSavePath = async () => {
-            const defaultSavePath = await path.audioDir()
-            setSaveFolder(defaultSavePath)
-        }
-        initSavePath()
-    }, [])
+            const defaultSavePath = await path.audioDir();
+            setSaveFolder(defaultSavePath);
+        };
+
+        initSavePath();
+    }, []);
 
     useEffect(() => {
-        //If we're downloading, show the download progress
-        if (isDownloading) {
-            setTimeout(() => {
-                setFooterView(2)
-            }, 0)
-        } else {
-            setTimeout(() => {
-                setFooterView(1)
-            }, 500)
-        }
-    }, [isDownloading])
+        const timeout = window.setTimeout(
+            () => setFooterView(isDownloading ? 2 : 1),
+            isDownloading ? 0 : 500
+        );
 
-
-    useEffect(() => {
-        const totalItems = playlistClips.length
-        const newPercentage = Math.ceil((completedItems / totalItems) * 100)
-        setDownloadPercentage(newPercentage)
-    }, [completedItems])
-
-    const openCompleteModal = () => modals.open({
-        title: 'Operation complete',
-        centered: true,
-        withCloseButton: false,
-        children: (
-            <Stack gap={20}>
-                <Text>Your playlist has been downloaded successfully</Text>
-                <Flex justify="flex-end">
-                    <Button onClick={() => modals.closeAll()}>Close</Button>
-                </Flex>
-            </Stack>
-        )
-    });
+        return () => window.clearTimeout(timeout);
+    }, [isDownloading]);
 
     return (
-        <AppShell
-            header={{ height: 50 }}
-            padding="lg"
-        >
-            <AppShell.Header>
-                <Box h="100%" data-tauri-drag-region>
-                    <Flex justify="space-between" h="100%" w="100%" data-tauri-drag-region>
-                        <Flex
-                            h="100%" w="100%"
-                            justify="center"
-                            align="center"
-                            style={{
-                                userSelect: "none",
-                            }}
-                            data-tauri-drag-region>
-                            <Group gap={6} ml={10}>
-                                <IconVinyl />
-                                <Text>Suno Music Downloader</Text>
-                            </Group>
-                        </Flex>
-                        <CloseButton onClick={() => exit(1)} mt={6} mr={6} />
-                    </Flex>
-                </Box>
-            </AppShell.Header>
+        <AppShell header={{ height: 50 }} padding="lg">
+            <AppHeader />
+
             <AppShell.Main
                 style={{
                     display: "flex",
-                    flexDirection: "column", // Stacks children vertically
-                    height: "100vh", // Full height of the viewport
-                    overflow: "hidden", // Prevent overall layout overflow
+                    flexDirection: "column",
+                    height: "100vh",
+                    overflow: "hidden",
                 }}
             >
-                {/* Top Section */}
-                <Flex justify="space-between">
-                    <SectionHeading number="1" title="Paste playlist link">
-                        <Popover position="bottom-start" withArrow shadow="lg">
-                            <Popover.Target>
-                                <ActionIcon variant="subtle" size="sm" color="gray"><IconHelpCircle /></ActionIcon>
-                            </Popover.Target>
-                            <Popover.Dropdown>
-                                <Group w={240} gap={4}>
-                                    <Image radius="md" src="./assets/copy-playlist.png" />
-                                    <Text>Navigate to your Suno playlist, and click the 'Copy playlist' button as shown</Text>
-                                </Group>
-                            </Popover.Dropdown>
-                        </Popover>
-                    </SectionHeading>
-
-                    <SettingsPanel />
-                </Flex>
-
-                <Flex gap="sm" direction="row" mb={20}>
-                    <TextInput
-                        flex={1}
-                        value={playlistUrl}
-                        onChange={(event) => setPlaylistUrl(event.currentTarget.value)}
-                        rightSection={<IconLink />}
-                        disabled={isGettingPlaylist || isDownloading}
-                    />
-                    <Button
-                        variant="filled"
-                        loading={isGettingPlaylist}
-                        onClick={getPlaylist}
-                        disabled={isGettingPlaylist || isDownloading}
-                    >
-                        Get playlist songs
-                    </Button>
-                </Flex>
-
-                {/* Central Section */}
-                <SectionHeading number="2" title="Review songs" />
-                <Flex
-                    bg="dark.8"
-                    mb={20}
-                    style={{
-                        flex: 1, // This grows to occupy remaining space
-                        overflowY: "auto", // Scrollable if content exceeds
-                        padding: "1rem", // Optional padding
-                        borderRadius: "0.5rem",
-                        flexFlow: "column"
-                    }}
-                >
-                    <Table verticalSpacing="sm" ref={songTable}>
-                        <Table.Thead>
-                            <Table.Tr>
-                                <Table.Th>Img</Table.Th>
-                                <Table.Th>Title</Table.Th>
-                                <Table.Th style={{ textAlign: "right" }}>Length</Table.Th>
-                                <Table.Th></Table.Th>
-                            </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>
-                            {playlistData && playlistClips?.map((clip) => (
-                                <Table.Tr
-                                    key={clip.id}
-                                    data-id={`row-${clip.id}`}
-                                    onContextMenu={showContextMenu([
-                                        {
-                                            key: 'open',
-                                            title: 'Open in Suno',
-                                            icon: <IconLink size={16} />,
-                                            disabled: isDownloading,
-                                            onClick: () => openUrl(`https://www.suno.com/song/${clip.id}`)
-                                        },
-                                        {
-                                            key: 'download',
-                                            title: 'Download',
-                                            icon: <IconDownload size={16} />,
-                                            disabled: isDownloading,
-                                            onClick: () => downloadSingleSong(clip)
-                                        },
-                                        { key: 'divider' },
-                                        {
-                                            key: 'remove',
-                                            color: 'red',
-                                            title: 'Remove file',
-                                            icon: <IconTrash size={16} />,
-                                            disabled: isDownloading,
-                                            onClick: () => deleteClip(clip)
-                                        },
-                                    ])}
-                                >
-                                    <Table.Td w={50}>
-                                        <Image radius="sm" w={40} fit="contain" src={clip.image_url} />
-                                    </Table.Td>
-                                    <Table.Td>
-                                        <Stack gap={0}>
-                                            <Group gap={0}>
-                                                <Text
-                                                    fw={800} size="md"
-                                                >
-                                                    {clip.title}
-                                                </Text>
-                                                {clip.model_version &&
-                                                    <Badge size="xs"
-                                                        variant="gradient"
-                                                        gradient={{ from: 'blue', to: 'cyan', deg: 90 }}
-                                                        ml={6}
-                                                    >{clip.model_version}</Badge>
-                                                }
-                                            </Group>
-                                            <Text size="sm" c="dimmed" lineClamp={1}>{clip.tags}</Text>
-                                        </Stack>
-                                    </Table.Td>
-                                    <Table.Td style={{ textAlign: "right" }}>
-                                        <Text ff="monospace">
-                                            {formatSecondsToTime(clip.duration)}
-                                        </Text>
-                                    </Table.Td>
-                                    <Table.Td style={{ textAlign: "center" }}>
-                                        <StatusIcon status={clip.status} />
-                                    </Table.Td>
-                                </Table.Tr>
-                            ))}
-                        </Table.Tbody>
-                    </Table>
-                </Flex>
-
-                {/* Bottom Section */}
-                <SectionHeading number="3" title="Select folder and download">
-                    <Popover position="bottom-start" withArrow shadow="lg">
-                        <Popover.Target>
-                            <ActionIcon variant="subtle" size="sm" color="gray"><IconHelpCircle /></ActionIcon>
-                        </Popover.Target>
-                        <Popover.Dropdown w={240}>
-                            <Text>
-                                In the selected directory, a new folder will be created with the playlist name. This folder will contain the downloaded songs.
-                            </Text>
-                        </Popover.Dropdown>
-                    </Popover>
-                </SectionHeading>
-                <Flex gap="sm" direction="row" mb={20}>
-
-                    <TextInput
-                        flex={1}
-                        value={saveFolder}
-                        disabled={isDownloading}
-                        readOnly
-                        onClick={selectOutputFolder}
-                        leftSection={<IconFolderFilled />}
-                        style={{
-                            cursor: "pointer",
-                        }}
-                    />
-                    <Button
-                        variant="filled"
-                        disabled={isGettingPlaylist || isDownloading || (!playlistData)}
-                        loading={isDownloading}
-                        onClick={downloadPlaylist}
-                    >
-                        Download songs
-                    </Button>
-                </Flex>
-
-                <Box mb={20} display="none">
-                    <hr />
-                    <Group>
-                        <h4>Debug commands:</h4>
-                        <Button onClick={async () => {
-                            await Logger.log({
-                                noSongs: 12,
-                                playlistUrl: "http://www.fred.com"
-                            })
-                            alert(await Logger.getUserId())
-                        }}>Send test log</Button>
-                        <Button onClick={async () => {
-                            alert(await Logger.getUserId())
-                        }}>Get user id</Button>
-                        <Button onClick={async () => {
-                            const settings = await (await getSettingsManager()).loadAll()
-                            console.log(settings)
-                        }}>Settings test</Button>
-                        <Button onClick={async () => {
-                            setFooterView(footerView == 1 ? 2 : 1)
-                        }}>Toggle bar</Button>
-                    </Group>
-
-                    <hr />
-                </Box>
-
-                <Footer
-                    firstComponent={
-                        <Group gap={6}>
-                            <Button leftSection={<IconBrandGithub />} variant="subtle" size="xs"
-                                onClick={() => openUrl("https://github.com/DrummerSi/suno-downloader")}
-                            >Open source</Button>
-                            <Divider orientation="vertical" />
-                            <Button leftSection={<IconCoffee />} variant="subtle" size="xs"
-                                onClick={() => openUrl("https://ko-fi.com/drummer_si")}
-                            >Buy me a coffee</Button>
-                        </Group>
-                    }
-                    secondComponent={
-                        <Stack w="100%" h={140} gap={4} pb={10} mt={-5}>
-                            <Flex>
-                                <Text size="xs">{downloadPercentage}%</Text>
-                            </Flex>
-                            <Progress value={downloadPercentage} animated />
-                        </Stack>
-                    }
-                    currentView={footerView}
+                <PlaylistUrlSection
+                    playlistUrl={playlistUrl}
+                    isGettingPlaylist={isGettingPlaylist}
+                    isDownloading={isDownloading}
+                    onPlaylistUrlChange={setPlaylistUrl}
+                    onGetPlaylist={getPlaylist}
                 />
+
+                <SongTableSection
+                    clips={playlistClips}
+                    hasPlaylist={Boolean(playlistData)}
+                    isDownloading={isDownloading}
+                    tableRef={songTable}
+                    onDeleteClip={deleteClip}
+                    onDownloadClip={downloadSingleSong}
+                />
+
+                <DownloadControls
+                    hasPlaylist={Boolean(playlistData)}
+                    isGettingPlaylist={isGettingPlaylist}
+                    isDownloading={isDownloading}
+                    saveFolder={saveFolder}
+                    onDownloadPlaylist={downloadPlaylist}
+                    onSelectOutputFolder={selectOutputFolder}
+                />
+
+                <DebugPanel footerView={footerView} onToggleFooterView={setFooterView} />
+
+                <AppFooter downloadPercentage={downloadPercentage} footerView={footerView} />
             </AppShell.Main>
-        </AppShell >
-    )
+        </AppShell>
+    );
 }
+
+
+
+
+
+
+
+
+
+
 
 export default App;
