@@ -22,9 +22,9 @@
     {
       "identifier": "http:default",
       "allow": [
-        {
-          "url": "https://*.suno.ai"
-        }
+        { "url": "https://studio-api.prod.suno.com/**" },
+        { "url": "https://*.suno.ai/**" },
+        { "url": "https://*.suno.com/**" }
       ]
     },
     "fs:default",

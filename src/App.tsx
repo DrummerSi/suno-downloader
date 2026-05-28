@@ -10,7 +10,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Logger from "./services/Logger";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
 import { addImageToMp3, deletePath, ensureDir, existsFile, writeFile } from "./services/RustFunctions";
-import { fetch } from "@tauri-apps/plugin-http";
 import filenamify from "filenamify";
 import { getSettingsManager, Settings } from "./services/SettingsManager";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";

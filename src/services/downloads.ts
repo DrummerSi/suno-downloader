@@ -3,6 +3,7 @@ import { IPlaylistClip, IPlaylistClipStatus } from "./Suno";
 import filenamify from "filenamify";
 import { addImageToMp3, existsFile, writeFile } from "./RustFunctions";
 import { Settings } from "./SettingsManager";
+import { fetch } from "@tauri-apps/plugin-http";
 
 export type DownloadContext = {
     settings: Settings;
