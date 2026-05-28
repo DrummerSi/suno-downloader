@@ -1,7 +1,7 @@
 import { Store, load } from '@tauri-apps/plugin-store';
 
 // Define the Settings interface with explicit types
-interface Settings {
+export interface Settings {
     name_templates: string
     overwrite_files: string
     embed_images: string

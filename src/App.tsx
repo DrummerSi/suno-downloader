@@ -3,7 +3,7 @@ import "./App.css";
 import * as path from "@tauri-apps/api/path"
 
 import { ActionIcon, AppShell, Badge, Box, Button, CloseButton, Divider, Flex, Group, Image, Popover, Progress, Stack, Table, Text, TextInput } from "@mantine/core"
-import { IconBrandGithub, IconCoffee, IconFolderFilled, IconHelpCircle, IconLink, IconVinyl } from "@tabler/icons-react";
+import { IconBrandGithub, IconCoffee, IconFolderFilled, IconHelpCircle, IconLink, IconVinyl, IconCopy, IconTrash, IconDownload } from "@tabler/icons-react";
 import Suno, { IPlaylist, IPlaylistClip, IPlaylistClipStatus } from "./services/Suno";
 import { addImageToMp3, deletePath, ensureDir, existsFile, writeFile } from "./services/RustFunctions";
 import { showError, showSuccess } from "./services/Utils";
@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import Footer from "./components/Footer";
 import Logger from "./services/Logger";
 import SectionHeading from "./components/SectionHeading";
-import { getSettingsManager } from "./services/SettingsManager"
+import { getSettingsManager, Settings } from "./services/SettingsManager"
 import SettingsPanel from "./components/OptionsModal";
 import StatusIcon from "./components/StatusIcon";
 import { fetch } from "@tauri-apps/plugin-http"
@@ -23,8 +23,17 @@ import pLimit from "p-limit"
 import { exit } from '@tauri-apps/plugin-process'
 import scrollIntoView from "scroll-into-view-if-needed"
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useContextMenu } from 'mantine-contextmenu'
+
+type DownloadContext = {
+    settings: Awaited<Settings>
+    outputDir: string
+    tmpDir: string
+}
 
 function App() {
+
+    const { showContextMenu } = useContextMenu()
 
     const [playlistUrl, setPlaylistUrl] = useState("")
     const [saveFolder, setSaveFolder] = useState("")
@@ -39,6 +48,68 @@ function App() {
     const [playlistClips, setPlaylistClips] = useState<IPlaylistClip[]>([])
 
     const [footerView, setFooterView] = useState<1 | 2>(1)
+
+
+    const prepareDownloadContext = async (playlistName: string) => {
+        const settings = await (await getSettingsManager()).loadAll()
+
+        const outputDir = await path.join(saveFolder, filenamify(playlistName))
+        const tmpDir = await path.join(outputDir, 'tmp')
+
+        await ensureDir(outputDir)
+        await ensureDir(tmpDir)
+
+        return { settings, outputDir, tmpDir }
+    }
+
+    const downloadClip = async (song: IPlaylistClip, context: DownloadContext, forceOverwrite = false) => {
+        const { settings, outputDir, tmpDir } = context
+
+        updateClipStatus(song.id, IPlaylistClipStatus.Processing)
+        scrollToRow(song.id)
+
+        const songFileName = await getSongName(song, settings.name_templates, outputDir)
+
+        if ((settings.overwrite_files === "false" && await existsFile(songFileName)) || !forceOverwrite) {
+            //Skip writing file if it already exists and options tell us to skip
+            updateClipStatus(song.id, IPlaylistClipStatus.Skipped)
+            return
+        }
+
+        const response = await fetch(song.audio_url)
+
+        if (response.status !== 200) {
+            updateClipStatus(song.id, IPlaylistClipStatus.Error)
+            return
+        }
+
+        const songBuffer = await response.arrayBuffer()
+        await writeFile(songFileName, songBuffer)
+
+        if (settings.embed_images === "true") {
+            await embedClipImage(song, songFileName, tmpDir)
+        }
+
+        updateClipStatus(song.id, IPlaylistClipStatus.Success)
+    }
+
+    const embedClipImage = async (
+        song: IPlaylistClip,
+        songFileName: string,
+        tmpDir: string
+    ) => {
+        const response = await fetch(song.image_url)
+        if (response.status !== 200) return false
+
+        const imageBuffer = await response.arrayBuffer()
+        const imageFileName = await path.join(tmpDir, path.sep(), `${filenamify(song.id)}.jpg`);
+
+        writeFile(imageFileName, imageBuffer)
+        addImageToMp3(songFileName, imageFileName)
+    }
+
+
+
 
     const getPlaylist = async () => {
         setIsGettingPLaylist(true)
@@ -100,84 +171,54 @@ function App() {
     }
 
     const downloadPlaylist = async () => {
+        if (!playlistData) return
+
         setDownloadPercentage(0)
         setCompletedItems(0)
         setIsDownloading(true)
 
-        //TODO: Proper error checking
-        if (!playlistData || !playlistClips) return
-
-        //Create the output directory if it doesn't exist
-        const outputDir = await path.join(saveFolder, filenamify(playlistData.name))
-        const tmpDir = await path.join(outputDir, "tmp")
-        await ensureDir(outputDir)
-        await ensureDir(tmpDir)
+        const context = await prepareDownloadContext(playlistData.name)
+        const limit = pLimit(5)
 
         //Reset the status of all clips
         setPlaylistClips((prevClips) =>
             prevClips.map((clip) => ({ ...clip, status: IPlaylistClipStatus.None }))
         )
 
-        //Load settings
-        const settings = await (await getSettingsManager()).loadAll()
-
-        const limit = pLimit(5)
-        const downloadPromises = playlistClips.map((song) => {
-            return limit(async () => {
-                updateClipStatus(song.id, IPlaylistClipStatus.Processing)
-
-                scrollToRow(song.id)
-
-                const songFileName = await getSongName(song, settings.name_templates, outputDir)
-                if (settings.overwrite_files === "false" && await existsFile(songFileName)) {
-                    //Skip writing file if it already exists and options tell us to skip
-                    updateClipStatus(song.id, IPlaylistClipStatus.Skipped)
-
-                } else {
-
-                    // ─── For Testing Only ────────────────────────
-                    //await delay(getRandomBetween(800, 2000))
-
-                    // ─── Live Downloading ────────────────────────
-                    const response = await fetch(song.audio_url)
-                    if (response.status !== 200) {
-                        console.log("Failed to download song", song.audio_url)
-                        updateClipStatus(song.id, IPlaylistClipStatus.Error)
-                        return //continue
-                    }
-
-                    const songBuffer = await response.arrayBuffer()
-                    console.log('writing', songFileName)
-                    writeFile(songFileName, songBuffer)
-
-                    if (settings.embed_images === "true") {
-                        //Try and download and inject the mp3 image
-                        const response2 = await fetch(song.image_url)
-                        if (response2.status === 200) {
-                            const imageBuffer = await response2.arrayBuffer()
-                            //const imageFileName = `${tmpDir}\\${filenamify(song.id)}.jpg`
-                            const imageFileName = await path.join(tmpDir, path.sep(), `${filenamify(song.id)}.jpg`); // `${tmpDir}\\${filenamify(song.id)}.jpg`
-                            writeFile(imageFileName, imageBuffer)
-                            addImageToMp3(songFileName, imageFileName)
-                        }
-                    }
-
-                    updateClipStatus(song.id, IPlaylistClipStatus.Success)
-
-                }
-
-                setCompletedItems((completedItems) => completedItems + 1)
-
-            })
-        })
-
-        await Promise.all(downloadPromises)
+        await Promise.all(
+            playlistClips.map((song) =>
+                limit(async () => {
+                    await downloadClip(song, context)
+                    setCompletedItems((value) => value + 1)
+                })
+            )
+        )
 
         setIsDownloading(false)
-        deletePath(tmpDir)
+        await deletePath(context.tmpDir)
 
-        //openCompleteModal()
         showSuccess("Playlist downloaded successfully")
+    }
+
+    const downloadSingleSong = async (song: IPlaylistClip) => {
+        if (!playlistData) return
+
+        setIsDownloading(true)
+
+        const context = await prepareDownloadContext(playlistData.name)
+
+        await downloadClip(song, context, true)
+
+        setIsDownloading(false)
+        await deletePath(context.tmpDir)
+
+        showSuccess("Song downloaded successfully")
+    }
+
+    const deleteClip = (clipToRemove: IPlaylistClip) => {
+        setPlaylistClips((prev) =>
+            prev.filter((clip) => clip.id !== clipToRemove.id)
+        )
     }
 
     const formatSecondsToTime = (seconds: number) => {
@@ -323,7 +364,35 @@ function App() {
                         </Table.Thead>
                         <Table.Tbody>
                             {playlistData && playlistClips?.map((clip) => (
-                                <Table.Tr key={clip.id} data-id={`row-${clip.id}`}>
+                                <Table.Tr
+                                    key={clip.id}
+                                    data-id={`row-${clip.id}`}
+                                    onContextMenu={showContextMenu([
+                                        {
+                                            key: 'open',
+                                            title: 'Open in Suno',
+                                            icon: <IconLink size={16} />,
+                                            disabled: isDownloading,
+                                            onClick: () => openUrl(`https://www.suno.com/song/${clip.id}`)
+                                        },
+                                        {
+                                            key: 'download',
+                                            title: 'Download',
+                                            icon: <IconDownload size={16} />,
+                                            disabled: isDownloading,
+                                            onClick: () => downloadSingleSong(clip)
+                                        },
+                                        { key: 'divider' },
+                                        {
+                                            key: 'remove',
+                                            color: 'red',
+                                            title: 'Remove file',
+                                            icon: <IconTrash size={16} />,
+                                            disabled: isDownloading,
+                                            onClick: () => deleteClip(clip)
+                                        },
+                                    ])}
+                                >
                                     <Table.Td w={50}>
                                         <Image radius="sm" w={40} fit="contain" src={clip.image_url} />
                                     </Table.Td>
@@ -332,17 +401,16 @@ function App() {
                                             <Group gap={0}>
                                                 <Text
                                                     fw={800} size="md"
-                                                // variant="gradient"
-                                                // gradient={{ from: "grape", to: "teal", deg: 45 }}
                                                 >
                                                     {clip.title}
                                                 </Text>
-                                                <Badge size="xs"
-                                                    variant="gradient"
-
-                                                    gradient={{ from: 'blue', to: 'cyan', deg: 90 }}
-                                                    ml={6}
-                                                >{clip.model_version}</Badge>
+                                                {clip.model_version &&
+                                                    <Badge size="xs"
+                                                        variant="gradient"
+                                                        gradient={{ from: 'blue', to: 'cyan', deg: 90 }}
+                                                        ml={6}
+                                                    >{clip.model_version}</Badge>
+                                                }
                                             </Group>
                                             <Text size="sm" c="dimmed" lineClamp={1}>{clip.tags}</Text>
                                         </Stack>
@@ -384,7 +452,7 @@ function App() {
                         onClick={selectOutputFolder}
                         leftSection={<IconFolderFilled />}
                         style={{
-                            pointer: "cursor",
+                            cursor: "pointer",
                         }}
                     />
                     <Button
